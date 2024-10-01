@@ -111,28 +111,6 @@ for(i in 1:n_sites){
 
 saveRDS(hefs_forward,paste('./out/',loc,'/hefs_forward.rds',sep=''))
 
-#----------------------Cumulative stats for HEFS------------------------------------
-
-#get forward looking cumulative totals from the hindcast
-hefs_forward_cumul <- apply(hefs_forward,c(1,2,3),FUN=sum)
-
-#also calculate the fractional values for the lead times
-hefs_forward_frac <- aperm(apply(hefs_forward,c(1,2,3),function(x){x/sum(x)}),c(2,3,4,1))
-
-#take ensemble average of cumulative totals
-hefs_forward_cumul_ens_avg <- apply(hefs_forward_cumul,c(1,3),FUN=mean)
-
-###define the residuals across ensemble members#
-hefs_forward_cumul_ens_resid <- hefs_forward_cumul
-for (j in 1:n_sites) {
-  for(e in 1:n_ens) {
-    hefs_forward_cumul_ens_resid[j,e,] <- hefs_forward_cumul[j,e,] - hefs_forward_cumul_ens_avg[j,]
-  }  
-}
-#--------------------------------------------------------------------------------------
-
-
-
 #----------------------Cumulative stats for obs----------------------------------------
 
 #####prepare observed data######
