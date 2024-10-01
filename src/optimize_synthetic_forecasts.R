@@ -12,11 +12,13 @@ library(DEoptim)
 
 loc = 'LAM'             #main hindcast location ID, current options: 'NHG' 'YRS' 'LAM'             #number of samples to generate
 keysite_name = 'LAMC1'   #specific site ID for 'keysite' which conditions the kNN sampling
-cal_val_setup = '5fold'
+cal_val_setup = '5fold'  #
 kk <- 30            #sampling window
-knn_pwr = -1        #sampling decay
+knn_pwr = 0        #sampling decay  (negative values weight earlier leads, positive vice versa)
 pcnt = 0.99         #percentile to target for eCRPS loss function; e.g. 0.9 = 90-100% of obs inflows
 obj_pwr = 0       #decay function value to weight leads differently, neg values to weight shorter leads, pos to weight longer leads
+#////////////////////////////////////////
+
 
 #optimized parameters (reasonable values shown for testing the function, actual optimization per)
 scale_pwr = -1      #decay scaling between hi and lo
@@ -46,6 +48,7 @@ lwr = c(-5,0.1,1,0.1,-2)
 
 init_pop <- matrix(rep(st,10*length(st)),ncol=length(st),byrow=T)+matrix((runif(10*length(st)^2)-0.5),ncol=length(st))
 
+#cluster setup for parallel computing
 if(tolower(.Platform$OS.type)=='windows'){
   cl <- makeCluster(detectCores(),type='PSOCK')
   clusterExport(cl=cl,varlist=list('synopt_fun','syn_opt','loc','keysite_name','cal_val_setup','kk','knn_pwr','ixx_obs','leads',
@@ -53,17 +56,15 @@ if(tolower(.Platform$OS.type)=='windows'){
 
 if(tolower(.Platform$OS.type)=='unix'){
   cl <- makeCluster(detectCores(),type='FORK')
-  #cl <- makeCluster(detectCores(),type='PSOCK',setup_timeout=300)
   }
 
 setDefaultCluster(cl=cl)
 print(cl)
 
-#out <- optimParallel(par=st,fn=synopt_fun,lower = lwr,upper = upr,control=list(maxit=10))
-#out_DE <- DEoptim(fn=synopt_fun,lower=lwr,upper=upr,DEoptim.control(VTR=0.3,cluster=cl,itermax=10,parallelType='parallel',trace=TRUE))
+#run Differential Evolution optimizer to calibrate synthetic forecast threshold parameters
 out_DE <- DEoptim(fn=synopt_fun,lower=lwr,upper=upr,DEoptim.control(cluster=cl,itermax=100,initialpop=init_pop,parallelType='parallel',trace=TRUE))
 
-
+#aggregate parameters for storage
 ecrps_sse <- out_DE$optim$bestval
 best_par <- out_DE$optim$bestmem
 hi <- best_par[3]+best_par[2]
@@ -72,19 +73,21 @@ best_par[2] <- hi
 opt_out <- c(ecrps_sse,best_par)
 names(opt_out) <- c('eCRPS_sse','scale_pwr','hi','lo','sig_a','sig_b')
 
+#save parameter sets
+
+#if not the full out-of-sample '5fold-test', generates and saves a single parameter set
 if(cal_val_setup!='5fold-test'){
   saveRDS(out_DE,paste('./out/',loc,'/DEopt_',cal_val_setup,'_pcnt=',pcnt,'_',keysite_name,'.rds',sep=''))
   saveRDS(opt_out,paste('./out/',loc,'/DE-opt-params_',cal_val_setup,'_pcnt=',pcnt,'_',keysite_name,'.rds',sep=''))
   write.csv(t(opt_out),paste('./out/',loc,'/DE-opt-params_',cal_val_setup,'_pcnt=',pcnt,'_',keysite_name,'.csv',sep=''),row.names = F)}
 
+#full out-of-sample '5fold-test' generates and saves a parameter set for each fold
 if(cal_val_setup=='5fold-test'){
   saveRDS(out_DE,paste('./out/',loc,'/DEopt_',cal_val_setup,'_pcnt=',pcnt,'_',keysite_name,'-',idx,'.rds',sep=''))
   saveRDS(opt_out,paste('./out/',loc,'/DE-opt-params_',cal_val_setup,'_pcnt=',pcnt,'_',keysite_name,'-',idx,'.rds',sep=''))
   write.csv(t(opt_out),paste('./out/',loc,'/DE-opt-params_',cal_val_setup,'_pcnt=',pcnt,'_',keysite_name,'-',idx,'.csv',sep=''),row.names = F)}
 
 print(paste('opt end',Sys.time()))
-
-#stopCluster()
 
 rm(list = ls());gc()
 
